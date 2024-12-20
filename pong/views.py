@@ -1,26 +1,27 @@
 import json
-from django.http import Http404, HttpResponse, HttpResponseBadRequest
+from django.http import Http404, HttpResponse, HttpResponseRedirect, HttpResponseBadRequest, HttpResponseForbidden, HttpResponseNotFound
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.core.exceptions import ObjectDoesNotExist
-from django.contrib.auth import login, logout
+from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
 from django.contrib import messages
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from ftt.settings import STATIC_URL
-from .backend import CustomAuthenticationBackend
-from .models import GameTeam, Tournament, CustomUser, Team, Game
+from .models import Conversation, GameTeam, Tournament, CustomUser, Team, Game
 from .forms import ProfilPictureForm, NicknameForm
-from dotenv import load_dotenv
+from django.urls import reverse
 import requests
 import os
 import base64
 from django.dispatch import receiver
 from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import Signal
-
+from django.views.decorators.cache import never_cache
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 @receiver(user_logged_in)
 def user_logged_in_handler(sender, request, user, **kwargs):
@@ -67,6 +68,7 @@ def update_status(request):
 
 
 def index(request, page_name=None):
+    print("je suis dans index")
     return render(request, "index.html", page_name)
 
 
@@ -87,6 +89,7 @@ def play(request):
 
 
 @login_required
+@never_cache
 def profil(request):
     ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     try:
@@ -134,7 +137,7 @@ def profil(request):
     elif request.user.profil_picture_oauth:
         profil_picture_url = request.user.profil_picture_oauth
     else:
-        profil_picture_url = STATIC_URL("img/profil/image-defaut.png")
+        profil_picture_url = "/static/img/profil/image-defaut.png"
     return render(
         request,
         "profil.html",
@@ -158,9 +161,10 @@ def user(request, nickname=None):
     ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     try:
         user = CustomUser.objects.get(nickname=nickname)
+        print(f"User: {user}")
+        print(f"nickname: {nickname}")
         # Calcul des statistiques du joueur
         user_teams = Team.objects.filter(users=user)
-        games = Game.objects.filter(teams__in=user_teams)
         matches = (
             Game.objects.filter(teams__in=user_teams)
             .filter(status="END")
@@ -184,12 +188,10 @@ def user(request, nickname=None):
                 print(f"Error while retrieving match data : {e}")
                 pass
     except ObjectDoesNotExist:
-        return render(
-            request, "error.html", {"template": "ajax.html" if ajax else "index.html"}
-        )
+        return redirect(errorview)
 
-    matches_played = games.count()
-    wins = games.filter(winner__users=user).count()
+    matches_played = matches.count()
+    wins = matches.filter(winner__users=user).count()
     win_ratio = round((wins / matches_played) * 100, 2) if matches_played > 0 else 0
 
     if user.profil_picture:
@@ -209,8 +211,16 @@ def user(request, nickname=None):
         "wins": wins,
         "win_ratio": win_ratio,
         "matches": matches,
+        "nickname": nickname,
     }
     return render(request, "user.html", context)
+
+
+def errorview(request):
+    ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    return render(
+        request, "error.html", {"template": "ajax.html" if ajax else "index.html"}
+    )
 
 
 @login_required
@@ -223,7 +233,7 @@ def nickname(request):
         if form.is_valid():
             print(form.cleaned_data)
             form.save()
-            return JsonResponse({"message": "Nickname updated successfully"})
+            return JsonResponse({"message": "Nickname updated successfully", "nickname": request.user.nickname})
         else:
             return JsonResponse({"error": "New nickname is required"}, status=400)
     else:
@@ -269,7 +279,8 @@ def chat(request):
             if request.user.profil_picture_oauth:
                 profil_picture_url = request.user.profil_picture_oauth
             else:
-                profil_picture_url = "/chemin/vers/image/par/defaut.png"
+                # profil_picture_url = "/chemin/vers/image/par/defaut.png"
+                profil_picture_url = "/static/img/profil/image-defaut.png"
         return render(
             request,
             "chat.html",
@@ -288,6 +299,7 @@ def lobby(request, gameId=None, invitedPlayer2=None):
             style="Quick Play",
             opponent=request.POST.get("player2"),
             score=request.POST.get("scoreText", "0 - 0"),
+            host=request.user,
         )
         team = Team.objects.create()
         team.save()
@@ -344,73 +356,174 @@ def game(request, gameId=None):
 
 
 @login_required
-def remLobby(request, remoteId=None, invitedPlayer2=None):
-    if remoteId is None:
-        game = Game.objects.create(
-            start_time=timezone.now(),
-            style="Remote Play",
-            # opponent=request.POST.get('player2', ''),
-            # score=request.POST.get('scoreText', 0),
-        )
-        team = Team.objects.create()
-        team.save()
-        team.users.add(request.user)
-        gt = GameTeam(game=game, team=team)
-        gt.save()
-        return redirect(remLobby, game.pk)
-    game = get_object_or_404(Game, pk=remoteId)
-    ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+def remLobby(request, invitedPlayer2=None):
     if request.method == "GET":
+        ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
         player1_username = request.user.nickname
         return render(
             request,
             "remLobby.html",
             {
                 "template": "ajax.html" if ajax else "index.html",
-                "remoteId": remoteId,
                 "invitedPlayer2": invitedPlayer2,
                 "player1_username": player1_username,
             },
         )
     elif request.method == "POST":
         try:
-            data = json.loads(request.body)
-            nickname = data.get("nickname")
-            user = CustomUser.objects.get(nickname=nickname)
-            if user is None:
-                return JsonResponse({"error_message": "user not found"})
-            team = Team.objects.create()
-            team.save()
-            team.users.add(user)
-            gt = GameTeam(game=game, team=team)
-            gt.save()
-            return JsonResponse({"nickname": user.nickname})
-        except ObjectDoesNotExist:
-            return JsonResponse({"error_message": "Missing valid player nickname"})
+            #data = json.loads(request.body)
+            #nickname = data.get("nickname")
+            nickname = invitedPlayer2
+            if not nickname:
+                return JsonResponse({"error": "Missing nickname"}, status=400)
+                
+            invited_user = CustomUser.objects.get(nickname=nickname)
+            if invited_user == request.user:
+                return JsonResponse({'error': "You can't invite yourself"}, status=400)
+                
+            # Envoyer la notification via WebSocket
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f"notifications_{invited_user.username}",
+                {
+                    'type': 'game_invite',
+                    'sender': request.user.username,
+                }
+            )
+            return JsonResponse({"success": True, "nickname": invited_user.nickname})
+        except CustomUser.DoesNotExist:
+            return JsonResponse({"error": "User not found"}, status=404)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+
+@login_required
+def decline_game_invite(request, gameId):
+    try:
+        game = Game.objects.get(pk=gameId)
+        if game.style != "Remote Play":
+            return JsonResponse({'error': 'Invalid game type'}, status=400)
+            
+        game.status = "END"
+        game.save()
+        
+        return JsonResponse({'success': True})
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Game not found'}, status=404)
 
 
 @login_required
 def remote(request, remoteId=None):
-    ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    if remoteId is None:
-        return redirect(home)
-    remote = Game.objects.get(pk=remoteId)
-    if remote is None:
-        return redirect(home)
-    players = list()
-    for team in remote.teams.all():
-        print(team.users.first())
-        players.append(team.users.first())
-    if request.user not in players:
-        return redirect(home)
-    return render(
-        request,
-        "remote.html",
-        {
-            "template": "ajax.html" if ajax else "index.html",
-            "remoteId": remoteId,
-        },
-    )
+    if request.method == "POST":
+        try:
+            # Vérifier que la requête est bien en JSON
+            if not request.headers.get('Content-Type') == 'application/json':
+                return JsonResponse({"error": "Content-Type must be application/json"}, status=400)
+
+            # Parser le JSON
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError:
+                return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+            # Vérifier les données requises
+            inviter_username = data.get('inviter')
+            if not inviter_username:
+                return JsonResponse({"error": "Missing inviter"}, status=400)
+
+            print(f"Creating game with inviter: {inviter_username}")
+                
+            # Récupérer l'inviteur
+            try:
+                inviter = CustomUser.objects.get(username=inviter_username)
+            except CustomUser.DoesNotExist:
+                return JsonResponse({"error": f"User {inviter_username} not found"}, status=404)
+
+            # Vérifier qu'on ne crée pas un jeu avec soi-même
+            if inviter == request.user:
+                return JsonResponse({"error": "Cannot create game with yourself"}, status=400)
+            
+            print(f"Creating game between {request.user.username} and {inviter.username}")
+
+            # Créer le jeu
+            game = Game.objects.create(
+                start_time=timezone.now(),
+                style="Remote Play",
+                host=inviter
+            )
+            
+            print(f"Game created with ID: {game.id}")
+            
+            # Créer les équipes
+            try:
+                team1 = Team.objects.create()
+                team1.users.add(request.user)  # L'accepteur est dans la team 1
+                GameTeam.objects.create(game=game, team=team1)
+                
+                team2 = Team.objects.create()
+                team2.users.add(inviter)  # L'inviteur est dans la team 2
+                GameTeam.objects.create(game=game, team=team2)
+                
+                print(f"Teams created for game {game.id}")
+            except Exception as e:
+                # En cas d'erreur, supprimer le jeu créé
+                game.delete()
+                raise Exception(f"Error creating teams: {str(e)}")
+            
+            # Retourner l'URL de redirection
+            redirect_url = f'/remote/{game.id}/'
+            print(f"Redirecting to: {redirect_url}")
+
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f"notifications_{inviter_username}",
+                {
+                    'type': 'game_created',
+                    'host': request.user.username,
+                    'redirect_url': redirect_url
+                }
+            )
+
+            return JsonResponse({
+                'success': True,
+                'redirect': redirect_url
+            })
+            
+        except Exception as e:
+            print(f"Error in remote POST: {str(e)}")
+            return JsonResponse({"error": str(e)}, status=500)
+            
+    elif request.method == "GET":
+        print(f"GET request for remote game with ID: {remoteId}")
+        try:
+            if remoteId is None:
+                return JsonResponse({"error": "Game ID is required"}, status=400)
+                
+            game = get_object_or_404(Game, pk=remoteId)
+            
+            # Vérifier que l'utilisateur est un participant
+            players = []
+            for team in game.teams.all():
+                players.extend(team.users.all())
+                
+            if request.user not in players:
+                return redirect('home')
+                
+            ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            
+            return render(
+                request,
+                "remote.html",
+                {
+                    "template": "ajax.html" if ajax else "index.html",
+                    "remoteId": remoteId,
+                },
+            )
+            
+        except Game.DoesNotExist:
+            return HttpResponseNotFound("Game not found")
 
 
 @login_required
@@ -431,18 +544,15 @@ def tourLobby(request, tournamentId=None):
         try:
             data = json.loads(request.body)
             nicknames = [value for key, value in data.items()]
+            nicknames.append(request.user.nickname)
             users = CustomUser.objects.filter(nickname__in=nicknames).distinct()
-            if users.count() < 3:
+            if users.count() < 4:
                 return JsonResponse({"error_message": "Not enough distinct players"})
             if not users.exists():
                 return JsonResponse(
                     {"error_message": "No users found with the provided nicknames"}
                 )
             tournament = Tournament.objects.get(pk=tournamentId)
-            team = Team.objects.create()
-            team.users.add(request.user)
-            team.save()
-            tournament.register_team(team)
             for user in users:
                 team = Team.objects.create()
                 team.users.add(user)
@@ -506,35 +616,157 @@ def tournament_game(request, gameId=None):
 
 
 def logoutview(request):
-    if request.user is not None:
-        user_logged_in_handler(sender=None, request=request, user=request.user)
-    logout(request)
+    try:
+        if request.user is not None:
+            user_logged_out_handler(sender=None, request=request, user=request.user)
+            logout(request)
+    except NotImplementedError:
+        return redirect(loginview)
     return redirect(loginview)
 
-
+@csrf_exempt
 def loginview(request):
     if request.user.is_authenticated:
         user_logged_in_handler(sender=None, request=request, user=request.user)
-        redirect(home)
+        return redirect("home")
     if request.method == "GET":
         ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        return render(
-            request,
-            "login.html",
-            {"template": "ajax.html" if ajax else "index.html"},
-        )
+        return render(request, "login.html")
     elif request.method == "POST":
-        load_dotenv()
         request.session["state"] = base64.b64encode(os.urandom(100)).decode("ascii")
         auth_url = "{}/oauth/authorize?client_id={}&redirect_uri={}&scope={}&state={}&response_type=code".format(
             os.getenv("OAUTH_URL"),
             os.getenv("OAUTH_ID"),
-            requests.utils.quote("http://localhost:8000/accounts/callback/"),
+            f"http://{os.getenv('DOMAIN')}{reverse(callback)}",
             "public",
             request.session["state"],
         )
         return redirect(auth_url)
 
+@csrf_exempt
+def loginview_two(request):
+    if request.method == "POST":
+        # Les données sont toujours envoyées en JSON depuis le frontend
+        try:
+            data = json.loads(request.body)
+            username = data.get('username', '').strip()
+            password = data.get('password', '').strip()
+            print(f"username: {username}\npassword: {password}\n")
+
+            if not username:
+                return JsonResponse({
+                    'status': 'error',
+                    'field': 'username',
+                    'message': 'Username is required'
+                }, status=400)
+            
+            if not password:
+                return JsonResponse({
+                    'status': 'error',
+                    'field': 'password',
+                    'message': 'Password is required'
+                }, status=400)
+
+            user = authenticate(request, username=username, password=password)
+            
+            if user is not None:
+                login(request, user)
+                return JsonResponse({
+                    'status': 'success',
+                    'message': 'Authentication successful',
+                    'redirect_uri': reverse('home')
+                })
+            
+            # Vérifier si l'utilisateur existe
+            if CustomUser.objects.filter(username=username).exists():
+                return JsonResponse({
+                    'status': 'error',
+                    'field': 'password',
+                    'message': 'Invalid password'
+                }, status=401)
+            else:
+                return JsonResponse({
+                    'status': 'error',
+                    'field': 'username',
+                    'message': 'Username not found'
+                }, status=401)
+
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Invalid JSON data'
+            }, status=400)
+
+    return JsonResponse({
+        'status': 'error',
+        'message': 'Method not allowed'
+    }, status=405)
+
+
+@csrf_exempt
+def signupview(request):
+    if request.method == "GET":
+        ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        return render(
+            request,
+            "signup.html",
+            {"template": "ajax.html" if ajax else "index.html"},
+        )
+    if request.method == "POST":
+        
+        data = json.loads(request.body)
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')
+        passwordRepeat = data.get('passwordRepeat')
+        print(username, email, password, passwordRepeat)
+        """
+        username = request.POST.get('username')
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        passwordRepeat = request.POST.get('passwordRepeat')
+        print(username, email, password, passwordRepeat)
+        """
+        
+        try:
+            user = CustomUser.objects.get(email=email)
+            return JsonResponse({'status': 'error', 'message': 'An account with this mail already exist'}, status=406)
+            #messages.error(request, "An account on this mail already exist!")
+            #return JsonResponse({'success': True, 'message': "Form submitted successfully"})
+        except CustomUser.DoesNotExist:
+            try:
+                user = CustomUser.objects.get(username=username)
+                return JsonResponse({'status': 'error', 'message': 'username already exist'}, status=406)
+                #messages.error(request, "Username already exist!")
+                #return redirect (signupview)
+            except CustomUser.DoesNotExist:
+                #print(f" retour depuis la creation user: {response.json()}")
+                user = CustomUser.objects.create(username=username)
+                user.email = email
+                user.password = password
+                user.save()
+
+                #messages.success(request, "user has been created!")
+        login(request, user)#, backend="django.contrib.auth.backends.ModelBackend")
+        return JsonResponse({'status': 'success', 'message': 'username already exist', 'redirect_uri': '/home/'})
+
+        #return render(request, "home.html", {"template": "index.html"})
+    
+    """
+    try:
+        user = CustomUser.objects.get(username=response.json()["login"])
+    except CustomUser.DoesNotExist:
+        #print(f" retour depuis la creation user: {response.json()}")
+        user = CustomUser.objects.create(username=response.json()["login"])
+        try:
+            user.profil_picture_oauth = response.json()["image"]["link"]
+        except KeyError:
+            user.profil_picture_oauth = f"https://github.com/{user.username}.png"
+        user.save()
+
+    login(request, user)
+    return redirect(home)
+    """
 
 def callback(request):
     code = request.GET.get("code")
@@ -546,7 +778,7 @@ def callback(request):
             "client_id": os.getenv("OAUTH_ID"),
             "client_secret": os.getenv("OAUTH_SECRET"),
             "code": code,
-            "redirect_uri": "http://localhost:8000/accounts/callback/",
+            "redirect_uri": f"http://{os.getenv('DOMAIN')}{reverse(callback)}",
             "state": state,
         },
         headers={"Accept": "application/json"},
@@ -563,20 +795,18 @@ def callback(request):
     try:
         user = CustomUser.objects.get(username=response.json()["login"])
     except CustomUser.DoesNotExist:
+        #print(f" retour depuis la creation user: {response.json()}")
         user = CustomUser.objects.create(username=response.json()["login"])
-        print("USER CREATED")
         try:
-            user.profilPictureUrl = response.json()["image"]["link"]
+            user.profil_picture_oauth = response.json()["image"]["link"]
         except KeyError:
-            user.profil_picture_oauth = "https://github.com/{}.png".format(
-                user.username
-            )
+            user.profil_picture_oauth = f"https://github.com/{user.username}.png"
         user.save()
 
-    login(request, user)
+    login(request, user)#, backend="pong.backend.CustomAuthenticationBackend")
     return redirect(home)
 
-
+@login_required
 def get_user_info(request, nickname):
     if request.method == "GET":
         # nickname = request.GET.get('nickname')
@@ -601,30 +831,30 @@ def get_user_info(request, nickname):
     # TEST AVEC FAUX USERS
 
 
-def create_fake_user(request):
-    # Créer un faux utilisateur
-    fake_user = CustomUser.objects.create_user(
-        username="user123",
-        email="user123@example.com",
-        password="password123",
-        profil_picture=STATIC_URL("./img/profil/image-defaut.png"),
-    )
-    fake_user.first_name = "John"
-    fake_user.last_name = "Doe"
-    # fake_user.profil_picture = '../img/profil/image-defaut.png'
-    fake_user.save()
+# def create_fake_user(request):
+#     # Créer un faux utilisateur
+#     fake_user = CustomUser.objects.create_user(
+#         username="user123",
+#         email="user123@example.com",
+#         password="password123",
+#         profil_picture=STATIC_URL("./img/profil/image-defaut.png"),
+#     )
+#     fake_user.first_name = "John"
+#     fake_user.last_name = "Doe"
+#     # fake_user.profil_picture = '../img/profil/image-defaut.png'
+#     fake_user.save()
 
-    # Renvoyer les informations de l'utilisateur créé
-    user_info = {
-        "username": fake_user.username,
-        "first_name": fake_user.first_name,
-        "last_name": fake_user.last_name,
-        "email": fake_user.email,
-        "profil_picture": "img/profil/image-defaut.png",
-    }
-    return JsonResponse(user_info)
+#     # Renvoyer les informations de l'utilisateur créé
+#     user_info = {
+#         "username": fake_user.username,
+#         "first_name": fake_user.first_name,
+#         "last_name": fake_user.last_name,
+#         "email": fake_user.email,
+#         "profil_picture": "/static/img/profil/image-defaut.png",
+#     }
+#     return JsonResponse(user_info)
 
-
+@login_required
 def UpdateUserSettingsView(request):
     if request.method == "POST":
         paddle_speed = int(request.POST.get("paddle_speed"))
@@ -652,7 +882,7 @@ def UpdateUserSettingsView(request):
         return HttpResponseBadRequest("Invalid request method")
 
 
-# @login_required
+@login_required
 def getUserData(request):
     data = {
         "ballSpeed": request.user.ballSpeed,
@@ -661,23 +891,22 @@ def getUserData(request):
         "ballColor": request.user.ballColor,
         "backgroundColor": request.user.backgroundColor,
     }
-
     return JsonResponse(data)
 
-
+@login_required
 def get_nicknames(request, gameId=None):
     if gameId is None:
         return JsonResponse({"error": "Invalid request"})
     game = Game.objects.get(pk=gameId)
-    player1_nickname = game.teams.first().users.first().nickname
-    player2_nickname = game.teams.last().users.first().nickname
+    player1_nickname = GameTeam.objects.filter(game=game).first().team.users.first().nickname
+    player2_nickname = GameTeam.objects.filter(game=game).last().team.users.first().nickname
     data = {
         "player1_nickname": player1_nickname,
         "player2_nickname": player2_nickname,
     }
     return JsonResponse(data)
 
-
+@login_required
 def get_scores(request, gameId=None):
     if gameId is None:
         return JsonResponse({"error": "Invalid request"})
@@ -711,6 +940,7 @@ def get_scores(request, gameId=None):
 
 
 @csrf_exempt
+@login_required
 def get_users(request):
     if request.method == "GET":
         users = CustomUser.objects.all()
@@ -735,12 +965,13 @@ def get_users(request):
 
 
 # FOR MATCH HISTORY
+@login_required
 def profil_view(request):
     # Récupérer tous les matchs associés à l'utilisateur
     matches = Game.objects.filter(teams__users=request.user)
     return render(request, "profil.html", {"matches": matches})
 
-
+@login_required
 def getList(request, prefix, type):
     print("[getList FUNCTION]")
     if request.method == "GET":
@@ -806,6 +1037,7 @@ def getList(request, prefix, type):
 
 @csrf_exempt
 @require_POST
+@login_required
 def manageFriend(request, prefix, action, nickname):
     print("[manageFriend FUNCTION]")
     try:
@@ -868,6 +1100,7 @@ def manageFriend(request, prefix, action, nickname):
 
 @csrf_exempt
 @require_POST
+@login_required
 def manageFriendChat(request, prefix, action, username):
     print("[manageFriend FUNCTION]")
     try:
@@ -929,7 +1162,7 @@ def manageFriendChat(request, prefix, action, username):
         print(f"User not found: {username}")
         return JsonResponse({"error": "user not found"}, status=404)
 
-
+@login_required
 def get_user_conversations(request):
     if request.method == "GET":
         user = request.user
@@ -962,3 +1195,99 @@ def get_user_conversations(request):
 
         context = {"conversations": serialized_conversations}
         return JsonResponse(context)
+
+
+@login_required
+def get_conversation(request, username):
+    if request.method == "GET":
+        user = request.user
+        try:
+            target = CustomUser.objects.get(username=username)
+            conversation = user.conversations.get(participants=target)
+        
+
+            messages = [
+                {
+                    "type": message.type,
+                    "id": message.id_msg,
+                    "sender": message.sender.username,
+                    "sender_nickname": message.sender.nickname,
+                    "target": message.target.username,
+                    "target_nickname": message.target.nickname,
+                    "message": message.message,
+                    "timestamp": message.timestamp,
+                }
+                for message in conversation.messages.all()
+            ]
+
+            serialized_conversation = {
+                "id": conversation.participants.username,
+                "name": conversation.participants.nickname,
+                "messages": messages,
+                "status": conversation.participants.status,
+                # "unread": conversation.unread,
+            }
+
+            context = {"conversation": serialized_conversation}
+            return JsonResponse(context)
+
+        except Conversation.DoesNotExist:
+            return JsonResponse({"error": f"Conversation with user '{username}' does not exist."}, status=404)
+
+"""
+def check_login_status(request):
+    if request.user.is_authenticated:
+        return JsonResponse({'authenticated': True})
+    else:
+        return JsonResponse({'authenticated': False})
+"""
+
+@login_required
+def accept_game_invite(request, gameId):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        game = Game.objects.get(pk=gameId)
+        if game.style != "Remote Play":
+            return JsonResponse({'error': 'Invalid game type'}, status=400)
+            
+        # Vérifier que le joueur est bien l'invité
+        if request.user == game.host:
+            return JsonResponse({'error': 'Host cannot accept invite'}, status=400)
+            
+        game.status = "PLAY"
+        game.save()
+        
+        # Créer l'équipe du joueur 2 s'il n'en a pas
+        team2 = Team.objects.filter(users=request.user).first()
+        if team2 is None:
+            team2 = Team.objects.create()
+            team2.users.add(request.user)
+        
+        # Ajouter l'équipe au jeu
+        GameTeam.objects.create(game=game, team=team2)
+        
+        # Retourner l'URL de redirection
+        redirect_url = f'/remote/{gameId}/'
+        return JsonResponse({
+            'success': True,
+            'redirect_url': redirect_url,
+            'host': game.host.username
+        })
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Game not found'}, status=404)
+
+@login_required
+def decline_game_invite(request, gameId):
+    try:
+        game = Game.objects.get(pk=gameId)
+        if game.style != "Remote Play":
+            return JsonResponse({'error': 'Invalid game type'}, status=400)
+            
+        game.status = "END"
+        game.save()
+        
+        return JsonResponse({'success': True})
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Game not found'}, status=404)

@@ -1,0 +1,74 @@
+{% extends template %}
+{% load static %}
+
+{% block title %}
+<title>SIGNUP</title>
+{% endblock %}
+
+{% block content %}
+<section id="app" class="py-5">
+	<div class="container">
+		<div class="row gy-4">
+			<div class="col-12 col-md-12">
+                {% if messages %}
+                    <div>
+                        {% for message in messages %}
+                            <div class="tes tes-{{ message.tags }}" style="color: red;">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+				<div class="login-container" id="signup-container">
+					
+					<form action="/accounts/signup/" method="post" id="signupForm">
+						{% csrf_token %}
+                        <div class="mb-3">
+							<label for="username" class="form-label"></label>
+							<input name="text" type="text" class="form-control" id="username" placeholder="Username" Required>	
+						</div>
+						<div class="mb-3">
+							<label for="email" class="form-label"></label>
+							<input name="email" type="email" class="form-control" id="email" placeholder="Email address" aria-describedby="emailHelp" Required>	
+						</div>
+						<div class="mb-3">
+							<label for="password" class="form-label"></label>
+							<input name="password" type="password" class="form-control" id="password" placeholder="Password" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" 
+								title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters" Required>
+						</div>
+                        <div class="mb-3">
+							<label for="passwordRepeat" class="form-label"></label>
+							<input name="passwordRepeat" type="password" class="form-control" id="passwordRepeat" placeholder="Repeat your password" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
+								title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters" Required>
+						</div>
+						<button type="submit" class="btn bg-vert">REGISTER</button>
+					</form>
+					<br></br>
+					<a href="/accounts/login/">I have already account</a>
+				</div>
+			</div>
+		</div>
+	</div>
+    
+    <!--
+	<div class="container-info">
+		<section class="">
+			<div class="container-fluid">
+				<div class="welcomeHome">
+					<div class="">Welcome to the Pong-Chos website&nbsp;!
+						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+						To access to the game and the chat, please log in &nbsp; ☺︎</div>
+				</div>
+			</div>
+		</section>
+	</div>
+	<section>
+		<div class="espace">
+			<div class="container-fluid">
+				<p></p>
+			</div>
+		</div>
+	</section>
+    -->
+</section>
+{% endblock %}

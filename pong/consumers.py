@@ -1,10 +1,12 @@
-from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from channels.generic.websocket import AsyncJsonWebsocketConsumer, AsyncWebsocketConsumer
 from .models import Message, CustomUser, Conversation, GameTeam, Team, Game
 from django.utils import timezone
 from asgiref.sync import sync_to_async
 from .engine import Engine
 from .player import Player
 from datetime import datetime
+import re
+import json
 
 games = {}
 
@@ -13,7 +15,7 @@ class Consumer(AsyncJsonWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = None
-        self.pauseLeft = 1
+        self.game = None
 
     async def connect(self):
         self.user = self.scope["user"]
@@ -24,9 +26,23 @@ class Consumer(AsyncJsonWebsocketConsumer):
         user.channel_name = self.channel_name
         await user.asave()
         await self.channel_layer.group_add("server", self.channel_name)
+        self.player = Player(self)
         await self.accept()
 
     async def disconnect(self, close_code):
+        if self.game is not None:
+            quit_game = await Game.objects.aget(pk=self.game.game.pk)
+            if quit_game is not None and quit_game.status != "END":
+                left = await quit_game.teams.afirst()
+                if self.user == await left.users.afirst():
+                    # self.game.right.score = 5
+                    while self.game.right.score < self.game.max_points:
+                        await self.game.score(team=self.game.right, side=1)
+                else:
+                    # self.game.left.score = 5
+                    while self.game.left.score < self.game.max_points:
+                        await self.game.score(team=self.game.left, side=0)
+                # await self.game.end()
         await self.channel_layer.group_discard("server", self.channel_name)
 
     async def receive_json(self, content):
@@ -47,8 +63,16 @@ class Consumer(AsyncJsonWebsocketConsumer):
         elif content["type"] == "manage_conversation":
             await self.manage_conversation(content)
         elif content["type"] == "game_invitation":
-            print("Invited received!")
-            await self.game_invitation(content)
+            target_user = await CustomUser.objects.aget(nickname=content["target"])
+            if target_user:
+                await self.channel_layer.group_send(
+                    f"notifications_{target_user.username}",
+                    {
+                        "type": "game_invite",
+                        "sender": self.user.username,
+                        "gameId": content.get("gameId")
+                    }
+                )
         elif content["type"] == "alert_tournament":
             print("Invited received!")
             await self.alert_tournament(content)
@@ -74,11 +98,12 @@ class Consumer(AsyncJsonWebsocketConsumer):
             },
         )
 
+        friend_exist = await target_instance.friends.filter(pk=self.user.pk).aexists()
         blocked_users = await target_instance.blocked_users.filter(
             pk=self.user.pk
         ).aexists()
         # check before send a message if sender was blocked
-        if not blocked_users:
+        if not blocked_users and friend_exist:
             await self.channel_layer.send(
                 target_instance.channel_name,
                 {
@@ -105,16 +130,18 @@ class Consumer(AsyncJsonWebsocketConsumer):
 
     async def alert_tournament(self, content):
         time_for_all = datetime.now().strftime("%H:%M")
-        sender_instance = await User.objects.aget(pk=self.user.pk)
+        sender_instance = await CustomUser.objects.aget(pk=self.user.pk)
         targets = content["target"].split(",")
 
+
         for target in targets:
-            target_instance = await User.objects.aget(nickname=target)
+            target_instance = await CustomUser.objects.aget(nickname=target)
+            friend_exist = await target_instance.friends.filter(pk=self.user.pk).aexists()
             blocked_users = await target_instance.blocked_users.filter(
                 pk=self.user.pk
             ).aexists()
             # check before send a message if sender was blocked
-            if not blocked_users:
+            if not blocked_users and friend_exist:
                 await self.channel_layer.send(
                     target_instance.channel_name,
                     {
@@ -133,17 +160,19 @@ class Consumer(AsyncJsonWebsocketConsumer):
         time_for_all = datetime.now().strftime("%H:%M")
         target = content["target"]
         sender_instance = await CustomUser.objects.aget(pk=self.user.pk)
-        target_instance = await CustomUser.objects.aget(username=target)
-        if target_instance is None:
-            target_instance = ""
+        target_instance = ""
 
         if "#invitation" in content["message"]:
             tab = content["message"].split(" ")
             if len(tab) == 2:  # invitation from remLobby
                 target_instance = await CustomUser.objects.aget(nickname=target)
             elif len(tab) == 1:  # invitation from chat
+                target_instance = await CustomUser.objects.aget(username=target)
                 gameId = " " + await self.createGameId(content)
                 content["message"] += gameId
+        else:
+            target_instance = await CustomUser.objects.aget(username=target)
+
         """
         elif "#decline" in content["message"]:
             tab = content["message"].split(" ")
@@ -164,12 +193,13 @@ class Consumer(AsyncJsonWebsocketConsumer):
                 "timestamp": time_for_all,
             },
         )
-
+        
+        friend_exist = await target_instance.friends.filter(pk=self.user.pk).aexists()
         blocked_users = await target_instance.blocked_users.filter(
             pk=self.user.pk
         ).aexists()
         # check before send a message if sender was blocked
-        if not blocked_users:
+        if not blocked_users and friend_exist:
             await self.channel_layer.send(
                 target_instance.channel_name,
                 {
@@ -183,17 +213,18 @@ class Consumer(AsyncJsonWebsocketConsumer):
                     "timestamp": time_for_all,
                 },
             )
-        # save conversations
-        messages = await Message.objects.acreate(
-            id_msg=content["id"],
-            type=content["type"],
-            sender=self.user,
-            target=target_instance,
-            # conversation=conversation,
-            message=content["message"],
-            timestamp=time_for_all,
-        )
-        await self.update_or_create_conversation(target_instance, messages)
+
+            # save conversations
+            messages = await Message.objects.acreate(
+                id_msg=content["id"],
+                type=content["type"],
+                sender=self.user,
+                target=target_instance,
+                # conversation=conversation,
+                message=content["message"],
+                timestamp=time_for_all,
+            )
+            await self.update_or_create_conversation(target_instance, messages)
 
     async def chat_message(self, event):
         print("send message...")
@@ -259,10 +290,11 @@ class Consumer(AsyncJsonWebsocketConsumer):
             await new_conversation.messages.aadd(messages)
             await self.user.conversations.aadd(new_conversation)
 
+        friend_exist = await target_instance.friends.filter(pk=self.user.pk).aexists()
         blocked_users = await target_instance.blocked_users.filter(
             pk=self.user.pk
         ).aexists()
-        if not blocked_users:
+        if not blocked_users and friend_exist:
             existing_conversation_target = await target_instance.conversations.filter(
                 participants=self.user
             ).aexists()
@@ -292,27 +324,25 @@ class Consumer(AsyncJsonWebsocketConsumer):
 
     async def createGameId(self, content):
         game = await Game.objects.acreate(
-            start_time=timezone.now(),
-            style="Remote Play",
-            # opponent=request.POST.get("player2"),
-            # score=request.POST.get("scoreText", "0 - 0"),
+            start_time=timezone.now(), style="Remote Play"
         )
 
-        team = await Team.objects.acreate()
-        await team.asave()
-        await team.users.aadd(self.user)
-        gt = GameTeam(game=game, team=team)
+        team1 = await Team.objects.filter(users=self.user).afirst()
+        if team1 is None:
+            team1 = await Team.objects.acreate()
+            await team1.users.aadd(self.user)
+        gt = GameTeam(game=game, team=team1)
         await gt.asave()
 
-        # find by username for request from chat
         target = await CustomUser.objects.aget(username=content["target"])
-        team2 = await Team.objects.acreate()
-        await team2.asave()
-        await team2.users.aadd(target)
+        team2 = await Team.objects.filter(users=target).afirst()
+        if team2 is None:
+            team2 = await Team.objects.acreate()
+            await team2.users.aadd(target)
         gt = GameTeam(game=game, team=team2)
         await gt.asave()
-        await game.asave()
 
+        await game.asave()
         return str(game.pk)
 
     async def removeGameId(self, gameId):
@@ -349,8 +379,12 @@ class Consumer(AsyncJsonWebsocketConsumer):
         if gameId not in games:
             games[gameId] = await sync_to_async(Engine)(gameId)
         self.game = games[gameId]
-        self.player = Player(self)
-        self.game.players.append(self.player)
+        if self.player in self.game.players:
+            return
+        if self.user == await (await self.game.game.teams.afirst()).users.afirst():
+            self.game.players.insert(0, self.player)
+        else:
+            self.game.players.insert(1, self.player)
         await self.channel_layer.group_add(f"game_{gameId}", self.channel_name)
 
     async def leave_game(self):
@@ -381,3 +415,73 @@ class Consumer(AsyncJsonWebsocketConsumer):
             self.player.speed_y = -1
         elif direction == "DOWN":
             self.player.speed_y = 1
+
+
+class NotificationConsumer(AsyncWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.notification_group = None
+        self.user = None
+
+    async def connect(self):
+        if not self.scope["user"].is_authenticated:
+            await self.close()
+            return
+
+        self.user = self.scope["user"]
+        self.notification_group = f"notifications_{self.user.username}"
+        
+        await self.channel_layer.group_add(
+            self.notification_group,
+            self.channel_name
+        )
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        if self.notification_group:
+            await self.channel_layer.group_discard(
+                self.notification_group,
+                self.channel_name
+            )
+
+    async def receive(self, text_data):
+        data = json.loads(text_data)
+        if data['type'] == 'game_invitation_confirmation':
+            print(f"Game accepted by: {self.user.username}")
+            # Envoyer la notification d'acceptation à l'hôte
+            await self.channel_layer.group_send(
+                f"notifications_{data['invitation_sender']}",
+                {
+                    'type': data['status'],
+                    'inviter': self.user.username,
+                }
+            )
+
+    async def game_invite(self, event):
+        print(f"Sending game invite from: {event['sender']}")
+        await self.send(text_data=json.dumps({
+            'type': 'game_invite',
+            'sender': event['sender'],
+        }))
+
+    async def game_created(self, event):
+        print(f"Game created by: {event['host']}")
+        await self.send(text_data=json.dumps({
+            'type': 'game_created',
+            'host': event['host'],
+            'redirect_url': event['redirect_url'],
+        }))
+
+    async def game_accepted(self, event):
+        print(f"Sending acceptance notification from: {event['inviter']}")
+        await self.send(text_data=json.dumps({
+            'type': 'game_accepted',
+            'inviter': event['inviter'],
+        }))
+
+    async def game_declined(self, event):
+        print(f"Sending declined notification from: {event['inviter']}")
+        await self.send(text_data=json.dumps({
+            'type': 'game_declined',
+            'inviter': event['inviter'],
+        }))

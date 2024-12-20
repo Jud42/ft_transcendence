@@ -1,0 +1,66 @@
+version: "2"
+
+services:
+  # caddy:
+  #   image: caddy
+  #   env_file: .env
+  #   ports:
+  #     - 80:80
+  #     - 443:443
+  #   networks:
+  #     - my-network
+  #   volumes:
+  #     - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - static:/static
+  #     - media:/media
+  #     - ssl:/ssl
+  #   restart: unless-stopped
+
+  django:
+    build:
+      context: ./
+      args:
+        DOMAIN:
+    env_file: .env
+    ports:
+      - "8000:8000"  # Port principal de l'application
+      - "35729:35729"  # Port pour livereload
+    networks:
+      - my-network
+    volumes:
+      - static:/ftt/static
+      - media:/ftt/media
+      - ssl:/ssl
+      - ./ftt:/ftt/ftt:cached  # Mode delegated pour de meilleures performances
+      - ./pong:/ftt/pong:cached
+      - .:/ftt:delegated  # Monter tout le projet pour le développement
+    environment:
+      - PYTHONUNBUFFERED=1  # Pour voir les logs en temps réel
+      - DJANGO_DEBUG=true  # Activer le mode debug pour le développement
+    depends_on:
+      - db
+     # - caddy
+    restart: unless-stopped
+
+  db:
+    image: postgres:latest
+    env_file: .env
+    container_name: $POSTGRES_HOST
+    expose:
+      - 5432
+    networks:
+      - my-network
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  ssl:
+  media:
+  static:
+  db-data:
+
+
+networks:
+  my-network:
+    driver: bridge

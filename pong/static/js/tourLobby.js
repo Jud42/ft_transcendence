@@ -1,5 +1,3 @@
-import { socket } from './index.js';
-
 export function tourLobby(tournamentId) {
 	let button = document.getElementById('startButton');
 	let isNicknameValid = false;
@@ -13,10 +11,21 @@ export function tourLobby(tournamentId) {
 
 		// Bloque l invitation a soi meme
 		console.log("Player 1 Username:", player1_username);
-		if (player2Nickname.trim() === document.getElementById('player1_username').value) {
-			showAlert("You can't play against yourself !");
-			return;
-		}
+		// if (player2Nickname.trim() === document.getElementById('player1_username').value) {
+		// 	showAlert("You can't play against yourself !");
+		// 	return;
+		// }
+
+		// if (player3Nickname.trim() === document.getElementById('player1_username').value) {
+		// 	showAlert("You can't play against yourself !");
+		// 	return;
+		// }
+
+		// if (player4Nickname.trim() === document.getElementById('player1_username').value) {
+		// 	showAlert("You can't play against yourself !");
+		// 	return;
+		// }
+
 		if (player2Nickname.trim() !== "" && player3Nickname.trim() !== "" && player4Nickname.trim() !== "") {
 			var data = {
 				p2Nickname: player2Nickname,
@@ -63,17 +72,6 @@ export function tourLobby(tournamentId) {
 			e.preventDefault();
 			e.stopPropagation();
 			showAlert("Please enter a valid username first.");
-		}
-		else {
-			var p2 = document.getElementById('playerInput2').value;
-			var p3 = document.getElementById('playerInput3').value;
-			var p4 = document.getElementById('playerInput4').value;
-			socket.send(JSON.stringify({
-				'type': 'alert_tournament',
-				'id': "id" + Math.random().toString(16).slice(2),
-				'target': `${p2},${p3},${p4}`, //nickname target
-				'message': `You are expected for the pong tournament`
-			}));
 		}
 	});
 

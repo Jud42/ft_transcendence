@@ -1,42 +1,275 @@
-{% extends template %}
 {% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LOGIN</title>
+    <link rel="stylesheet" type="text/css"
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" type="text/css" href="{% static 'style/App.css' %}" />
+    <link rel="shortcut icon" type="image/png" href="{% static 'img/favicon/favicon.ico' %}" />
+    <style>
+        /* Styles spécifiques à la page de login */
+        .input-error {
+            border-color: #dc3545 !important;
+            animation: shake 0.5s;
+        }
+        .error-message {
+            color: #dc3545;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+            display: none;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .input-group.success .form-control {
+            border-color: #198754;
+        }
+        .input-group.error .form-control,
+        .input-group.error .input-group-text {
+            border-color: #dc3545;
+            color: #dc3545;
+        }
+        .input-group.success .input-group-text {
+            border-color: #198754;
+            color: #198754;
+        }
+        .login-section {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            background: var(--background-color);
+        }
+        .welcome-banner {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        .welcome-title {
+            color: var(--text-color);
+            font-size: 2.5rem;
+        }
+        .welcome-text {
+            color: var(--text-color);
+            font-size: 1.2rem;
+        }
+        .login-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            backdrop-filter: blur(4px);
+        }
+        .btn-github {
+            background-color: #24292e;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .btn-github:hover {
+            background-color: #1a1e22;
+            color: white;
+            transform: translateY(-2px);
+        }
+        .divider {
+            position: relative;
+            text-align: center;
+            margin: 1.5rem 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .divider::before,
+        .divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background-color: #dee2e6;
+            margin: 0 1rem;
+        }
+        .divider span {
+            color: #6c757d;
+            font-size: 0.9rem;
+            padding: 0 0.5rem;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+        .signup-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .signup-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <section class="login-section py-5">
+        <div class="container">
+            <!-- Message de bienvenue en haut -->
+            <div class="row mb-5">
+                <div class="col-12 text-center">
+                    <div class="welcome-banner p-3 rounded">
+                        <h1 class="welcome-title mb-2">Welcome to Pong-Chos!</h1>
+                        <p class="welcome-text">
+                            Ready to play? Login to access the game and chat features 
+                        </p>
+                    </div>
+                </div>
+            </div>
 
-{% block title %}
-<title>LOGIN</title>
-{% endblock %}
+            <!-- Formulaire de connexion -->
+            <div class="row justify-content-center">
+                <div class="col-12 col-md-6 col-lg-4">
+                    <div class="login-container p-4">
+                        <h2 class="text-center mb-4 text-dark">Login</h2>
+                        
+                        <!-- Connexion GitHub -->
+                        <div class="social-login mb-4">
+                            <form action="/accounts/login/" method="post">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-github w-100 mb-3 d-flex align-items-center justify-content-center" data-bs-toggle="tooltip" data-bs-placement="top" title="Sign in with GitHub">
+                                    <i class="bi bi-github me-2"></i>
+                                    Continue with GitHub
+                                </button>
+                            </form>
+                        </div>
 
-{% block content %}
-<section id="app" class="py-5">
-	<div class="container">
-		<div class="row gy-4">
-			<div class="col-12 col-md-12">
-				<div class="login-container">
-					<h1>Log in</h1>
-					<form action="/accounts/login/" method="post">
-						{% csrf_token %}
-						<button type="submit" class="btn bg-vert">Connexion</button>
-					</form>
-				</div>
-			</div>
-		</div>
-	</div>
-	<div class="container-info">
-		<section class="">
-			<div class="container-fluid">
-				<div class="welcomeHome">
-					<div class="">Welcome to the Pong-Chos website&nbsp;!
-						&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-						To access to the game and the chat, please log in &nbsp; ☺︎</div>
-				</div>
-			</div>
-		</section>
-	</div>
-	<section>
-		<div class="espace">
-			<div class="container-fluid">
-				<p></p>
-			</div>
-		</div>
-	</section>
-</section>
-{% endblock %}
+                        <div class="divider">
+                            <span>Or</span>
+                        </div>
+                        
+                        <!-- Formulaire de connexion classique -->
+                        <form action="/accounts/login-form/" method="post" id="loginForm">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                    <input type="username" class="form-control" id="username" placeholder="Username" 
+                                        aria-describedby="usernameHelp" name="username" Required>
+                                </div>
+                                <div class="error-message" id="username-error"></div>
+                            </div>
+                            <div class="mb-4">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                                    <input type="password" class="form-control" id="password" placeholder="Password" 
+                                        name="password" Required>
+                                </div>
+                                <div class="error-message" id="password-error"></div>
+                            </div>
+                            <button type="submit" class="btn bg-vert w-100 py-2">Login</button>
+                        </form>
+                        
+                        <!-- Lien d'inscription -->
+                        <div class="text-center mt-4">
+                            <p class="text-dark mb-0">
+                                Not Registered? <a href="/accounts/signup/" class="signup-link">Sign up here</a>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+        crossorigin="anonymous"></script>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Réinitialiser les états d'erreur
+            resetFormState();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+            fetch('/accounts/login-form/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({
+                    username: username,
+                    password: password
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Ajouter un effet de succès avant la redirection
+                    showSuccess();
+                    setTimeout(() => {
+                        window.location.href = data.redirect_uri;
+                    }, 500);
+                } else {
+                    // Gérer l'erreur
+                    handleError(data);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showGeneralError('An unexpected error occurred. Please try again.');
+            });
+        });
+
+        function resetFormState() {
+            // Réinitialiser tous les états et messages d'erreur
+            const inputs = document.querySelectorAll('.input-group');
+            const errorMessages = document.querySelectorAll('.error-message');
+            
+            inputs.forEach(input => {
+                input.classList.remove('error', 'success');
+            });
+            
+            errorMessages.forEach(msg => {
+                msg.style.display = 'none';
+                msg.textContent = '';
+            });
+        }
+
+        function handleError(data) {
+            if (data.field) {
+                const input = document.getElementById(data.field);
+                const errorDiv = document.getElementById(`${data.field}-error`);
+                const inputGroup = input.closest('.input-group');
+                
+                inputGroup.classList.add('error');
+                errorDiv.textContent = data.message;
+                errorDiv.style.display = 'block';
+                
+                // Effet de secouement
+                input.classList.add('input-error');
+                setTimeout(() => {
+                    input.classList.remove('input-error');
+                }, 500);
+            } else {
+                showGeneralError(data.message);
+            }
+        }
+
+        function showSuccess() {
+            const inputs = document.querySelectorAll('.input-group');
+            inputs.forEach(input => {
+                input.classList.add('success');
+            });
+        }
+
+        function showGeneralError(message) {
+            const usernameError = document.getElementById('username-error');
+            usernameError.textContent = message;
+            usernameError.style.display = 'block';
+            document.getElementById('username').closest('.input-group').classList.add('error');
+        }
+    </script>
+</body>
+</html>

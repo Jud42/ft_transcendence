@@ -22,7 +22,6 @@
         <div id="scoreText" class="text-center score">
           <p>0 : 0</p>
         </div>
-        {% csrf_token %}
         <div class="pseudoGame d-flex justify-content-around mt-2">
           <span id="player1" class="badge">Player1</span>
           <span id="player2" class="badge">Player2</span>
@@ -64,5 +63,6 @@
       </div>
     </div>
   </div>
+  {% csrf_token %}
 </div>
 {% endblock %}

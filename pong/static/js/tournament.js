@@ -1,4 +1,5 @@
 import { router } from "./router.js";
+import { socket } from './index.js';
 
 export function tournament(gameId) {
 	let gameBoard;
@@ -40,10 +41,16 @@ export function tournament(gameId) {
 			.then(data => {
 				player1 = data.player1_nickname;
 				player2 = data.player2_nickname;
-				console.log(player1);
-				console.log(player2);
+				console.log("from tournament1: ", player1);
+				console.log("from tournament2: ", player2);
 				document.getElementById('player1').textContent = player1;
 				document.getElementById('player2').textContent = player2;
+				socket.send(JSON.stringify({
+					'type': 'alert_tournament',
+					'id': "id" + Math.random().toString(16).slice(2),
+					'target': `${player1},${player2}`, //nickname target
+					'message': `You are expected for the pong tournament`
+				}));
 			})
 			.catch(error => {
 				// Gérer les erreurs survenues lors de la requête
@@ -56,8 +63,8 @@ export function tournament(gameId) {
 		gameHeight = gameBoard.height;
 		player1Score = 0;
 		player2Score = 0;
-		paddle1 = { width: 25, height: 100, x: 10, y: 5 };
-		paddle2 = { width: 25, height: 100, x: gameWidth - 35, y: gameHeight - 105 };
+		paddle1 = { width: 25, height: 100, x: 10, y: 0 };
+		paddle2 = { width: 25, height: 100, x: gameWidth - 35, y: gameHeight - 100 };
 		gameRunning = false;
 		ballSpeed = 1;
 		ballX = gameWidth / 2;
@@ -67,17 +74,17 @@ export function tournament(gameId) {
 		clearBoard();
 		document.getElementsByClassName("close")[0].addEventListener("click", function () {
 			document.getElementById("myModalGame").style.display = "none";
-			resetGame();
+			// resetGame();
 		});
 		document.querySelector(".modalButton").addEventListener("click", function () {
 			document.getElementById("myModalGame").style.display = "none";
-			resetGame();
+			// resetGame();
 		});
 	}
 
 	document.getElementById("start-game").addEventListener("click", startGame);
 	document.getElementById("stop-game").addEventListener("click", stopGame);
-	document.getElementById("reset-game").addEventListener("click", resetGame);
+	// document.getElementById("reset-game").addEventListener("click", resetGame);
 
 	function draw() {
 		if (!gameRunning) {
@@ -207,10 +214,10 @@ export function tournament(gameId) {
 		scoreText.textContent = `${player1Score} : ${player2Score}`;
 	}
 
-	function resetGame() {
-		initializeGame();
-		updateScore();
-	}
+	// function resetGame() {
+	// 	initializeGame();
+	// 	updateScore();
+	// }
 
 	function startGame() {
 		if (!gameRunning) {
@@ -292,7 +299,7 @@ export function tournament(gameId) {
 			history.pushState(null, null, url);
 			router();
 		}).catch(error => {
-			console.error('Error Fetch request :', error);
+			console.log('Error Fetch request :', error);
 			history.pushState(null, null, window.location.origin);
 			router();
 		});

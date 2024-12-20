@@ -25,15 +25,79 @@ export function game(gameId) {
 	const ballRadius = 12.5;
 	// const paddleSpeed = {{ paddle_speed }};
 	let gameRunning = false;
-	let keyState = {
-		'w': false,
-		's': false,
-		'ArrowUp': false,
-		'ArrowDown': false,
+
+	// État des touches
+	const keys = {
+		w: false,
+		s: false,
+		z: false,
+		q: false,
+		d: false,
+		ArrowUp: false,
+		ArrowDown: false,
+		ArrowLeft: false,
+		ArrowRight: false
 	};
 
+	// Gestionnaire d'événements pour les touches
+	function handleKeyDown(e) {
+		if (e.key in keys) {
+			keys[e.key] = true;
+			e.preventDefault(); // Empêcher le défilement de la page avec les flèches
+		} else {
+			const key = e.key.toLowerCase();
+			if (key in keys) {
+				keys[key] = true;
+			}
+		}
+	}
+
+	function handleKeyUp(e) {
+		if (e.key in keys) {
+			keys[e.key] = false;
+		} else {
+			const key = e.key.toLowerCase();
+			if (key in keys) {
+				keys[key] = false;
+			}
+		}
+	}
+
+	// Mise à jour de la position des paddles
+	function updatePaddlePositions() {
+		if (!gameRunning) return;
+
+		// Paddle 1 (QWERTY + AZERTY)
+		if ((keys.w || keys.z) && paddle1.y > 0) {
+			paddle1.y -= paddleSpeed;
+		}
+		if (keys.s && paddle1.y < gameHeight - paddle1.height) {
+			paddle1.y += paddleSpeed;
+		}
+		if (keys.q && paddle1.x > 0) {
+			paddle1.x -= paddleSpeed;
+		}
+		if (keys.d && paddle1.x < gameWidth / 4) {
+			paddle1.x += paddleSpeed;
+		}
+
+		// Paddle 2 (Flèches)
+		if (keys.ArrowUp && paddle2.y > 0) {
+			paddle2.y -= paddleSpeed;
+		}
+		if (keys.ArrowDown && paddle2.y < gameHeight - paddle2.height) {
+			paddle2.y += paddleSpeed;
+		}
+		if (keys.ArrowLeft && paddle2.x > gameWidth * 3/4) {
+			paddle2.x -= paddleSpeed;
+		}
+		if (keys.ArrowRight && paddle2.x < gameWidth - paddle2.width) {
+			paddle2.x += paddleSpeed;
+		}
+	}
+
 	function initializeGame() {
-		fetch('/accounts/profil/settings/data/')
+		fetch('/profil/settings/data/')
 			.then(response => response.json())
 			.then(data => {
 				console.log(data);
@@ -83,8 +147,8 @@ export function game(gameId) {
 		gameHeight = gameBoard.height;
 		player1Score = 0;
 		player2Score = 0;
-		paddle1 = { width: 25, height: 100, x: 10, y: 5 };
-		paddle2 = { width: 25, height: 100, x: gameWidth - 35, y: gameHeight - 105 };
+		paddle1 = { width: 25, height: 100, x: 10, y: 0 };
+		paddle2 = { width: 25, height: 100, x: gameWidth - 35, y: gameHeight - 100 };
 		gameRunning = false;
 		// ballSpeed = 1;
 		ballX = gameWidth / 2;
@@ -103,17 +167,10 @@ export function game(gameId) {
 	document.getElementById("start-game").addEventListener("click", startGame);
 	document.getElementById("stop-game").addEventListener("click", stopGame);
 
-	function draw() {
-		if (!gameRunning) {
-			return;
-		}
-
+	function drawGame() {
 		clearBoard();
 		drawPaddles();
-		moveBall();
 		drawBall(ballX, ballY);
-		checkCollision();
-		requestAnimationFrame(draw);
 	}
 
 	function clearBoard() {
@@ -197,34 +254,6 @@ export function game(gameId) {
 		endGame();
 	}
 
-	function changeDirection(event) {
-		const keyPressed = event.key;
-
-		if (keyPressed in keyState) {
-			keyState[keyPressed] = (event.type === 'keydown');
-
-			if (keyState['w'] && !keyState['s']) {
-				if (paddle1.y > 0) {
-					paddle1.y -= paddleSpeed;
-				}
-			} else if (!keyState['w'] && keyState['s']) {
-				if (paddle1.y < gameHeight - paddle1.height) {
-					paddle1.y += paddleSpeed;
-				}
-			}
-
-			if (keyState['ArrowUp'] && !keyState['ArrowDown']) {
-				if (paddle2.y > 0) {
-					paddle2.y -= paddleSpeed;
-				}
-			} else if (!keyState['ArrowUp'] && keyState['ArrowDown']) {
-				if (paddle2.y < gameHeight - paddle2.height) {
-					paddle2.y += paddleSpeed;
-				}
-			}
-		}
-	}
-
 	function updateScore() {
 		scoreText.textContent = `${player1Score} : ${player2Score}`;
 	}
@@ -233,15 +262,20 @@ export function game(gameId) {
 		if (!gameRunning) {
 			gameRunning = true;
 			createBall();
-			document.getElementById("gameBoard").focus(); // Donner le focus au canevas
-			draw();
-			document.getElementById("gameBoard").addEventListener("keydown", changeDirection);
-			document.getElementById("gameBoard").addEventListener("keyup", changeDirection);
+			document.getElementById("gameBoard").focus();
+			// Ajouter les écouteurs d'événements
+			document.addEventListener("keydown", handleKeyDown);
+			document.addEventListener("keyup", handleKeyUp);
+			// Démarrer la boucle de jeu
+			gameLoop();
 		}
 	}
 
 	function stopGame() {
 		gameRunning = false;
+		// Retirer les écouteurs d'événements
+		document.removeEventListener("keydown", handleKeyDown);
+		document.removeEventListener("keyup", handleKeyUp);
 	}
 
 	function endGame() {
@@ -297,6 +331,16 @@ export function game(gameId) {
 				.catch(error => {
 					console.error('Error Fetch request :', error);
 				});
+		}
+	}
+
+	function gameLoop() {
+		if (gameRunning) {
+			updatePaddlePositions();
+			moveBall();
+			checkCollision();
+			drawGame();
+			requestAnimationFrame(gameLoop);
 		}
 	}
 

@@ -20,25 +20,27 @@ body-msg {
 
 .row-trayLeft {
     height: 70px;
-    background-color: #000;
-    border-right: 0.1px solid gray;
-}
-
-.row-chatChannel {
-    height: calc(100vh - 70px);
-    background-color: white;
+    /*background-color: #000;*/
     border-right: 0.1px solid gray;
 }
 
 .row-trayRight {
     height: 70px;
-    background-color: blue;
+    /*background-color: blue;*/
 
 }
 
+.row-chatChannel {
+    /*height: calc(80vh - 70px);*/
+    height: 80vh;
+    background-color: white;
+    border-right: 0.1px solid gray;
+}
+
 .row-chatPanel {
+    height: calc(80vh - 140px);
     overflow-y: auto;
-    height: calc(100vh - 140px);
+    /*height: 80vh;*/
     background-color: transparent;
 }
 
@@ -47,7 +49,10 @@ body-msg {
     height: 70px;
 }
 
-
+.panel-principal {
+    background-color: white;
+    height: 100%;
+}
 
 .profile-image {
     width: 50px;
@@ -124,6 +129,7 @@ body-msg {
     background: white;
     /*margin: 10px auto;*/
     padding: 10px 13px;
+    width: 100%;
 
     .input-wrapper {
         background: #eee;
@@ -200,8 +206,9 @@ body-msg {
     }
 
     .conversation-list {
+        /*height: 100%;*/
         overflow-y: auto;
-        height: calc(100vh - 119px);
+        height: calc(80vh - 119px);
 
         .conversation {
 
@@ -226,8 +233,8 @@ body-msg {
 .list-contact {
     position: absolute;
     width: 100%;
-    height: calc(100vh - 119px);
-    overflow-y: auto;
+    height: calc(80vh - 119px);
+    overflow-y: scroll;
 
     .contact {
         .text {
@@ -262,6 +269,11 @@ body-msg {
     .i-down {
         opacity: 0;
     }
+}
+
+.bi-send {
+    color: white;
+    font-size: 30px;
 }
 
 .night-mode .--onhover:hover {
@@ -327,11 +339,6 @@ body-msg {
     visibility: visible;
     transform: translateY(0);
     transition: opacity 0.8s, transform 0.8s cubic-bezier(.5, 0, 0, 1);
-}
-
-.panel-principal {
-    background-color: white;
-    height: 100%;
 }
 
 .chat-bubble {

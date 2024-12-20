@@ -1,42 +1,6 @@
-// import { profil } from "./profil.js";
-// import { game } from "./game.js";
-// import { startTournament } from "./tournament.js";
-// import { chat } from "./chat.js";
-// import { user } from "./user.js";
 import { router } from "./router.js";
 
 export var socket = new WebSocket(`ws://${window.location.host}/ws/`);
-
-const waitForOpenConnection = (socket) => {
-    return new Promise((resolve, reject) => {
-        const maxNumberOfAttempts = 10
-        const intervalTime = 1000 //ms
-
-        let currentAttempt = 0
-        const interval = setInterval(() => {
-            if (currentAttempt > maxNumberOfAttempts - 1) {
-                clearInterval(interval)
-                reject(new Error('Maximum number of attempts exceeded'))
-            } else if (socket.readyState === socket.OPEN) {
-                clearInterval(interval)
-                resolve()
-            }
-            currentAttempt++
-        }, intervalTime)
-    })
-}
-
-export const sendMessage = async (socket, msg) => {
-    if (socket.readyState !== socket.OPEN) {
-        try {
-            await waitForOpenConnection(socket)
-            socket.send(msg)
-        } catch (err) { console.error(err) }
-    } else {
-        socket.send(msg)
-    }
-}
-
 
 document.onpopstate = router;
 window.addEventListener("popstate", router);
@@ -62,87 +26,115 @@ document.addEventListener('DOMContentLoaded', function () {
 	const nightModeOn = document.getElementById('nightModeOn');
 	const nightModeOff = document.getElementById('nightModeOff');
 	const separator = document.querySelector('.separator');
+	const footer = document.getElementById('footer');
+	const signupContainer = document.getElementById('signup-container');
+	const loginContainer = document.getElementById('login-container');
+
+
+	let nightModeActivated = false;
 
 	nightModeOn.addEventListener('click', function () {
-		if (!toggleSwitch.checked) {
-			toggleSwitch.checked = false;
+		if (!nightModeActivated) {
+			toggleSwitch.checked = true;
 			document.body.classList.add('night-mode');
-			separator.style.background = 'black'; // Change la couleur de la ligne de séparation
-			toggleSwitch.dispatchEvent(new Event('change')); // Déclenche l'événement de changement pour activer le mode nuit
+			separator.style.background = 'black';
+			toggleSwitch.dispatchEvent(new Event('change'))
+			nightModeActivated = true;
 		}
 	});
 
 	nightModeOff.addEventListener('click', function () {
-		if (toggleSwitch.checked) {
-			toggleSwitch.checked = true;
+		if (nightModeActivated) {
+			toggleSwitch.checked = false;
 			document.body.classList.remove('night-mode');
-			separator.style.background = ''; // Change la couleur de la ligne de séparation
-			toggleSwitch.dispatchEvent(new Event('change')); // Déclenche l'événement de changement pour désactiver le mode nuit
+			separator.style.background = '';
+			toggleSwitch.dispatchEvent(new Event('change'));
+			nightModeActivated = false;
 		}
 	});
-});
 
-// < !--SCRIPT BOUTON MENU-- >
-function toggleNavbar() {
-	console.log('Toggle Navbar function called');
+	document.addEventListener("mousemove", function(event) {
+		const mouseY = event.clientY;
+		const windowHeight = window.innerHeight;
+	
+		// If the cursor is close to the bottom of the window, show the footer
+		//console.log(`position mouse Y: ${mouseY}`);
+		if (mouseY >= windowHeight - 10) {
+			footer.classList.add("show");
+		} else if (mouseY < windowHeight - 40) {
+			footer.classList.remove("show");
+		}
+	});
 
-	const navbarToggler = document.querySelector('.navbar-toggler');
-	const navbarNav = document.querySelector('#navbarNav');
+	if (signupContainer) {
 
-	// Vérifie si le menu est ouvert
-	const isOpen = navbarNav.classList.contains('show');
-
-	// Si le menu est ouvert, retire la classe active du bouton
-	if (isOpen) {
-		navbarToggler.classList.remove('active');
-	} else {
-		// Si le menu est fermé, ajoute la classe active au bouton
-		navbarToggler.classList.add('active');
+		signupContainer.addEventListener("submit", function(event) {
+			console.log("submit signupContainer");
+			event.preventDefault();
+			const data = {
+				username: document.getElementById("username").value,
+				email: document.getElementById("email").value,
+				password: document.getElementById("password").value,
+				passwordRepeat: document.getElementById("passwordRepeat").value
+			};
+			console.log(`mp: ${data.password}\nmprepeat: ${data.passwordRepeat}`);
+			if (data.password !== data.passwordRepeat)
+				alert("Password not match !");
+			else {
+				
+				fetch("/accounts/signup/", { 
+					method: "POST",
+					headers: { 
+						"Content-Type": "application/json", 
+					},
+					body: JSON.stringify(data)
+				})
+				.then(response => response.json())
+				.then(data => {
+					if (data.status == "error")
+						throw new Error(data.message);
+					console.log("success");
+					window.location.href = data.redirect_uri;
+				})
+				.catch((error) => {
+					console.error("error", error);
+					alert(error);
+				});
+			}	
+		});
 	}
-}
-// Fonction pour récupérer le jeton CSRF depuis les cookies
-function getCookie(name) {
-	const value = `; ${document.cookie}`;
-	const parts = value.split(`; ${name}=`);
-	if (parts.length === 2) return parts.pop().split(';').shift();
-}
+	else if (loginContainer) {
+		
+		document.getElementById("loginForm").addEventListener("submit", function(event) {
+			console.log("submit loginForm");
+			event.preventDefault();
+			
+			const data = {
+				username: document.getElementById("username").value,
+				password: document.getElementById("password").value,
+			};
+			console.log(`username: ${data.username}\nmpass: ${data.password}`);
+			
+			fetch("/accounts/login-form/", { 
+				method: "POST",
+				headers: { 
+					"Content-Type": "application/json", 
+				},
+				body: JSON.stringify(data)
+			})
+			.then(response => response.json())
+			.then(data => {
+				if (data.status == "error")
+					throw new Error(data.message);
+				console.log(data.message);
+				window.location.href = data.redirect_uri;
+			})
+			.catch((error) => {
+				console.error("error", error);
+				alert(error);
+			});
 
-// document.addEventListener('DOMContentLoaded', function () {
-// 	console.log('index.js lu ok');
-
-
-// 	function getCookie(name) {
-// 		const value = `; ${document.cookie}`;
-// 		const parts = value.split(`; ${name}=`);
-// 		console.log('index.js fonction getCookies lu ok');
-// 		if (parts.length === 2) return parts.pop().split(';').shift();
-// 	}
-
-// 	// window.addEventListener('click', function (logout_user) {
-// 	// 	if (logout_user.target === logout_user) {
-// 	// 		logout_user();
-// 	// 	}
-
-// 	window.logout_user = function () {
-// 		console.log('index.js fonction logout_user lu ok');
-// 		fetch("http://localhost:8000/accounts/logout/", {
-// 			method: 'POST',
-// 			headers: {
-// 				'Content-Type': 'application/x-www-form-urlencoded',
-// 				'X-CSRFToken': getCookie('csrftoken'),
-// 			},
-// 		})
-// 			.then(response => {
-// 				if (response.ok) {
-// 					// Redirige vers la page de connexion après la déconnexion
-// 					window.location.href = "/accounts/login/";
-// 					// window.location.href = "/accounts/logout/";
-// 				} else {
-// 					console.error('Erreur lors de la déconnexion');
-// 				}
-// 			})
-// 			.catch(error => {
-// 				console.error('Erreur lors de la déconnexion :', error);
-// 			});
-// 	};
-// });
+		});	
+	}
+	
+});

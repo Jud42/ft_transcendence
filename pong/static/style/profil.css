@@ -372,8 +372,8 @@
 /* BARRE D'INFO */
 
 .container-info {
-	position: relative;
-	height: 93px;
+	/*position: relative;*/
+	height: auto;
 }
 
 #modifyNicknameButton {

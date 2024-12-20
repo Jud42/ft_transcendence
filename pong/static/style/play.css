@@ -2,14 +2,9 @@
 
 /* LADDER BUTTON */
 
-.body {
-	padding-bottom: 150px;
-}
-
-.container {
-	/* display: flex; */
-	/* flex-direction: column; */
-}
+/*.body {
+	padding-bottom: 10px;
+}*/
 
 .styleBtn {
 	font-family: 'Titan One', sans-serif;
@@ -20,7 +15,7 @@
 }
 
 .marge {
-	margin-top: 130px !important;
+	margin-top: 70px !important;
 }
 
 .ladButClass {
@@ -28,12 +23,12 @@
 	margin-left: 28px;
 	font-family: 'Titan One', sans-serif;
 	/* margin: 5% 0; */
-	padding-top: 25px;
-	font-size: 50px;
+	padding: 20px 0;
+	font-size: 40px;
 	background-color: var(--violet);
 	color: var(--vert);
 	border-radius: 30px;
-	height: 125px;
+	height: 100px;
 	width: 400px;
 	border: none;
 }
@@ -41,13 +36,13 @@
 .quickButClass {
 	margin-top: 52px;
 	margin-left: 28px;
-	padding-top: 25px;
-	font-size: 50px;
+	padding: 20px 0;
+	font-size: 40px;
 	background-color: var(--violet);
 	font-family: 'Titan One', sans-serif;
 	color: var(--vert);
 	border-radius: 30px;
-	height: 125px;
+	height: 100px;
 	width: 400px;
 	border: none;
 }
@@ -74,7 +69,7 @@
 }
 
 .scrollBall {
-	margin-top: 40px;
+	margin-top: 30px;
 }
 
 /* MODE NUIT */

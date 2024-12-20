@@ -22,8 +22,10 @@ def user_directory_path(instance, filename):
 
 
 class CustomUser(AbstractBaseUser):
-    username = models.CharField(max_length=255, primary_key=True)
-    nickname = models.CharField(max_length=255, unique=True, null=True)
+    username = models.CharField(max_length=15, primary_key=True)
+    email = models.CharField(max_length=150, unique=True, null=True)
+    password = models.CharField(max_length=150, null=True)
+    nickname = models.CharField(max_length=15, unique=True, null=True)
     profil_picture = models.ImageField(
         max_length=255,
         upload_to=user_directory_path,
@@ -37,13 +39,13 @@ class CustomUser(AbstractBaseUser):
     channel_name = models.CharField(max_length=255)
     USERNAME_FIELD = "username"
     friends = models.ManyToManyField("self")
-    blocked_users = models.ManyToManyField("self")
+    blocked_users = models.ManyToManyField("self", symmetrical=False, related_name="blocked_users_set")
     status = models.CharField(max_length=10)
 
     objects = UserManager()
 
     paddleSpeed = models.IntegerField(
-        default=50, validators=[MinValueValidator(1), MaxValueValidator(100)]
+        default=30, validators=[MinValueValidator(1), MaxValueValidator(100)]
     )
     ballSpeed = models.IntegerField(
         default=3, validators=[MinValueValidator(1), MaxValueValidator(10)]
@@ -134,6 +136,7 @@ class Game(models.Model):
         choices=STATUS_CHOICES,
         default="LOBBY",
     )
+    host = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="hosted_games")
     tournament_round = models.ForeignKey("Round", on_delete=models.CASCADE, null=True)
     teams = models.ManyToManyField(
         Team, through=GameTeam, through_fields=("game", "team")
@@ -145,7 +148,6 @@ class Game(models.Model):
     winner = models.ForeignKey(
         Team, on_delete=models.CASCADE, related_name="games_won", null=True
     )
-
     start_time = models.DateTimeField(auto_now_add=True)
     end_time = models.DateTimeField(null=True, blank=True)
     style = models.CharField(max_length=100, default="not defined")
@@ -164,7 +166,7 @@ class Round(models.Model):
     def create_games(self):
         teams = list(self.teams.all())
         for team1, team2 in zip(teams[::2], teams[1::2]):
-            game = Game.objects.create(tournament_round=self)
+            game = Game.objects.create(tournament_round=self, style="Tournament")
             game.teams.add(team1, team2)
             game.save()
 
@@ -210,6 +212,8 @@ class Tournament(models.Model):
 
     def next_game(self):
         last_round = Round.objects.filter(tournament=self).last()
+        if self.teams.count() != 4:
+            raise Tournament.DoesNotExist()
         if last_round is None:
             self.start()
             last_round = Round.objects.filter(tournament=self).last()

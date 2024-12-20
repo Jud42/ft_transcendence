@@ -10,48 +10,66 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+from django.core.management.utils import get_random_secret_key
+from django.contrib.messages import constants as messages
 from pathlib import Path
 import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
-
+print(BASE_DIR)
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-62waze(5kyu^m0fh=)=qzuxa47q*q4%=2c^ws2$dnc2u6x8g!n"
+SECRET_KEY = os.getenv("SECRET_KEY", get_random_secret_key())
+#SECURE_SSL_REDIRECT = True
+#SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+#USE_X_FORWARDED_HOST = True
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = True  # Livereload nécessite DEBUG = True pour fonctionner
 
-ALLOWED_HOSTS = ["*"]
+if DEBUG:
+    ALLOWED_HOSTS = ["*"]
+else:
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]  # Ajout de 0.0.0.0 pour Docker
 
 # Application definition
 
 INSTALLED_APPS = [
-    "daphne",
+	"daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "livereload",
     "django.contrib.staticfiles",
     "pong",
 ]
+# "livereload",
+
+MESSAGE_TAGS = {
+    messages.ERROR: 'danger',
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    'livereload.middleware.LiveReloadScript',  # Assurez-vous que c'est le dernier middleware
 ]
+#   "livereload.middleware.LiveReloadScript",
+
+
+
+# STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 ROOT_URLCONF = "ftt.urls"
 
@@ -59,7 +77,7 @@ TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [],
-        "APP_DIRS": True,
+        "APP_DIRS": DEBUG is False,  # Utiliser APP_DIRS seulement en production
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.debug",
@@ -67,32 +85,48 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
             ],
+            "debug": DEBUG,
         },
     },
 ]
 
-# WSGI_APPLICATION = "ftt.wsgi.application"
+# Configuration supplémentaire pour le développement
+if DEBUG:
+    # Ajouter les loaders explicitement en mode DEBUG
+    TEMPLATES[0]['OPTIONS']['loaders'] = [
+        'django.template.loaders.filesystem.Loader',
+        'django.template.loaders.app_directories.Loader',
+    ]
+
+#WSGI_APPLICATION = "ftt.wsgi.application"
 ASGI_APPLICATION = "ftt.asgi.application"
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-        "CONFIG": {
-            "capacity": 1000,  # Adjust this value
-        },
+		"BACKEND": "channels.layers.InMemoryChannelLayer"
     },
 }
 
 
 # Database
-# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
+#https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
     }
 }
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': os.getenv("POSTGRES_DB"), 
+#         'USER': os.getenv("POSTGRES_USER"), 
+#         'PASSWORD': os.getenv("POSTGRES_PASSWORD"),
+#         'HOST': os.getenv("POSTGRES_HOST"), 
+#         'PORT': os.getenv("POSTGRES_PORT"),
+#     }
+# }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
@@ -112,8 +146,14 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-AUTHENTICATION_BACKENDS = ["pong.backend.CustomAuthenticationBackend"]
+#    "pong.backend.CustomAuthenticationBackend",
+
+AUTHENTICATION_BACKENDS = [
+    "pong.backend.CustomAuthCred",
+]
+
 AUTH_USER_MODEL = "pong.CustomUser"
+
 CSRF_USE_SESSIONS = True
 
 # Internationalization
@@ -121,7 +161,7 @@ CSRF_USE_SESSIONS = True
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "CET"
+TIME_ZONE = "Europe/Paris"
 
 USE_I18N = True
 
@@ -131,9 +171,31 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+
+# Configuration supplémentaire pour le développement
+if DEBUG:
+    STATICFILES_DIRS = [
+        os.path.join(BASE_DIR, 'pong/static'),
+    ]
+    # Désactiver le stockage statique en développement
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+    # Ne pas utiliser de cache pour les fichiers statiques en développement
+    STATICFILES_FINDERS = [
+        'django.contrib.staticfiles.finders.FileSystemFinder',
+        'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+    ]
+
+# Media files
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Ajout des paramètres livereload
+LIVERELOAD_HOST = '0.0.0.0'
+LIVERELOAD_PORT = '35729'
